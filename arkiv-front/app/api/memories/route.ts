@@ -4,6 +4,8 @@ import { ZodError, z } from "zod";
 import { createMemoryEntry } from "@/lib/memory/lifecycle";
 import { fetchActiveMemories } from "@/lib/memory/retrieval";
 import { agentWalletAddress } from "@/lib/arkiv/client";
+import { extendArkivEntity } from "@/lib/arkiv/repo";
+import { ExpirationTime } from "@arkiv-network/sdk/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +59,23 @@ export async function POST(request: Request) {
     if (error instanceof ZodError) {
       return Response.json({ error: "Invalid payload", issues: error.issues }, { status: 400 });
     }
+    const msg = error instanceof Error ? error.message : "Unexpected error";
+    return Response.json({ error: msg }, { status: 500 });
+  }
+}
+
+// DELETE /api/memories?entityKey=0x... — expires the entity immediately
+export async function DELETE(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const entityKey = searchParams.get("entityKey");
+  if (!entityKey) {
+    return Response.json({ error: "Missing entityKey" }, { status: 400 });
+  }
+  try {
+    // Set TTL to 1 second — effectively deletes it from all queries
+    await extendArkivEntity(entityKey, ExpirationTime.fromHours(1 / 3600));
+    return Response.json({ status: "expired" });
+  } catch (error) {
     const msg = error instanceof Error ? error.message : "Unexpected error";
     return Response.json({ error: msg }, { status: 500 });
   }

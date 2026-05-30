@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 
 type Memory = {
+  key: string;
   memoryId: string;
   content: string;
   scope: string;
@@ -65,6 +66,15 @@ export function MemoryInspector({ agentId = "memoryforge-default", userId }: Mem
     });
   }
 
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+
+  async function handleDelete(entityKey: string) {
+    setDeletingKey(entityKey);
+    await fetch(`/api/memories?entityKey=${encodeURIComponent(entityKey)}`, { method: "DELETE" }).catch(() => null);
+    setDeletingKey(null);
+    loadMemories();
+  }
+
   return (
     <div className="memory-inspector">
       <div className="section-heading">
@@ -120,6 +130,14 @@ export function MemoryInspector({ agentId = "memoryforge-default", userId }: Mem
               <span className={`badge badge-status-${m.status}`}>{m.status}</span>
               <span className="memory-scope">{m.scope}</span>
               <code className="memory-id muted">{m.memoryId.slice(0, 8)}…</code>
+              <button
+                className="memory-delete-btn"
+                title="Borrar memoria"
+                disabled={deletingKey === m.key}
+                onClick={() => handleDelete(m.key)}
+              >
+                {deletingKey === m.key ? "…" : "✕"}
+              </button>
             </div>
             <p className="memory-content">{m.content}</p>
             <div className="memory-scores">

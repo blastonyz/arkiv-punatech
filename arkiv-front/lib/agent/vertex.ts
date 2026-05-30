@@ -7,10 +7,10 @@
 
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
-const SYSTEM_PROMPT = `Sos un agente de IA llamado MemoryForge, especializado en gestiÃ³n de memoria evolutiva on-chain sobre la red Arkiv.
-RespondÃ©s en espaÃ±ol rioplatense, de forma concisa y Ãºtil.
-Cuando recibÃ­s contexto de memoria previo (marcado con [MEMORIA ACTIVA]), lo tenÃ©s en cuenta para personalizar tu respuesta.
-Cuando el historial de conversaciÃ³n incluye turnos previos, los usÃ¡s como contexto continuo.`;
+const SYSTEM_PROMPT = `Sos un agente de IA llamado MemoryForge, especializado en gestión de memoria evolutiva on-chain sobre la red Arkiv.
+Respondés en español rioplatense, de forma concisa y útil.
+Cuando recibís contexto de memoria previo (marcado con [MEMORIA ACTIVA]), lo tenés en cuenta para personalizar tu respuesta.
+Cuando el historial de conversación incluye turnos previos, los usás como contexto continuo.`;
 
 export type HistoryTurn = {
   role: "user" | "model";
@@ -30,8 +30,8 @@ export type AgentResponse = {
 };
 
 export type DualAgentResponse = {
-  precise: string;   // temperature 0.2 â€” factual, concise
-  creative: string;  // temperature 0.9 â€” exploratory, generative
+  precise: string;   // temperature 0.2 — factual, concise
+  creative: string;  // temperature 1.8 — hallucination-prone, divergent
   sessionId: string;
 };
 
@@ -108,7 +108,7 @@ export async function callDualAgents(turn: AgentTurn): Promise<DualAgentResponse
 
   const [precise, creative] = await Promise.all([
     generateContent(prompt, 0.2, turn.history),
-    generateContent(prompt, 0.9, turn.history),
+    generateContent(prompt, 1.8, turn.history),
   ]);
 
   return { precise, creative, sessionId: turn.sessionId };
@@ -142,21 +142,21 @@ export async function extractFacts(
   userMessage: string,
   agentReply: string,
 ): Promise<ExtractedFact[]> {
-  const extractPrompt = `AnalizÃ¡ este intercambio entre un usuario y un agente de IA.
-ExtraÃ© entre 0 y 3 hechos importantes que valga la pena recordar a largo plazo.
-Solo extraÃ© hechos concretos â€” preferencias, objetivos, contexto personal, datos tÃ©cnicos relevantes.
-No extraigas cosas genÃ©ricas o triviales.
+  const extractPrompt = `Analizá este intercambio entre un usuario y un agente de IA.
+Extraé entre 0 y 3 hechos importantes que valga la pena recordar a largo plazo.
+Solo extraé hechos concretos — preferencias, objetivos, contexto personal, datos técnicos relevantes.
+No extraigas cosas genéricas o triviales.
 
 Intercambio:
 Usuario: ${userMessage}
 Agente: ${agentReply}
 
-RespondÃ© ÃšNICAMENTE con un JSON array (sin markdown, sin texto extra):
+Respondé ÚNICAMENTE con un JSON array (sin markdown, sin texto extra):
 [
   { "content": "...", "memoryType": "fact|preference|goal|context", "importanceScore": 0-100 },
   ...
 ]
-Si no hay nada relevante, respondÃ©: []`;
+Si no hay nada relevante, respondé: []`;
 
   try {
     const raw = await generateContent(extractPrompt, 0.1);

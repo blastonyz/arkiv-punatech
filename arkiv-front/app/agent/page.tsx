@@ -9,9 +9,6 @@ export const dynamic = "force-dynamic";
 export default function AgentPage() {
   return (
     <main className="page-frame">
-      <div className="ambient ambient-one" />
-      <div className="ambient ambient-two" />
-
       <div className="agent-shell">
         <header className="agent-header">
           <div>

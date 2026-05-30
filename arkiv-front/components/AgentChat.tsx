@@ -121,7 +121,7 @@ export function AgentChat({ agentId, userId }: AgentChatProps) {
         <div className="dual-agents-label">
           <span className="dual-badge precise">Agente Preciso · 0.2</span>
           <span className="dual-agents-sep">vs</span>
-          <span className="dual-badge creative">Agente Creativo · 0.9</span>
+          <span className="dual-badge creative">Agente Creativo · 1.8</span>
         </div>
         {sessionId && (
           <code className="session-id-display">sesión {sessionId.slice(0, 10)}…</code>
@@ -165,7 +165,7 @@ export function AgentChat({ agentId, userId }: AgentChatProps) {
 
               <div className={`dual-card dual-creative${dual.feedbackGiven === "creative" ? " dual-winner" : ""}`}>
                 <div className="dual-header">
-                  <span className="dual-badge creative">Creativo · temp 0.9</span>
+                  <span className="dual-badge creative">Creativo · temp 1.8</span>
                   {!dual.feedbackGiven && (
                     <button className="feedback-btn" onClick={() => handleFeedback(i, "creative")}>
                       👍 Mejor
