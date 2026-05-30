@@ -992,6 +992,20 @@ textarea {
   cursor: default;
 }
 
+.memory-explorer-link {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  opacity: 0.75;
+  transition: opacity 150ms ease;
+  letter-spacing: 0.02em;
+}
+.memory-explorer-link:hover {
+  opacity: 1;
+  text-decoration: underline;
+}
+
 /* ─── Custom scrollbars ──────────────────────────────────────────────────── */
 
 .chat-messages,

@@ -2,6 +2,9 @@
 
 import { useState, useTransition } from "react";
 
+const BRAGA_EXPLORER_ENTITY_URL = (key: string) =>
+  `https://explorer.braga.hoodi.arkiv.network/entity/${key}`;
+
 type Memory = {
   key: string;
   memoryId: string;
@@ -130,6 +133,15 @@ export function MemoryInspector({ agentId = "memoryforge-default", userId }: Mem
               <span className={`badge badge-status-${m.status}`}>{m.status}</span>
               <span className="memory-scope">{m.scope}</span>
               <code className="memory-id muted">{m.memoryId.slice(0, 8)}…</code>
+              <a
+                href={BRAGA_EXPLORER_ENTITY_URL(m.key)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="memory-explorer-link"
+                title="Ver en Arkiv Explorer"
+              >
+                ↗ Arkiv
+              </a>
               <button
                 className="memory-delete-btn"
                 title="Borrar memoria"
