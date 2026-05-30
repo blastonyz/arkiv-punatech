@@ -10,6 +10,7 @@ export type SnapshotPayload = {
   outputHash: string;
   citedMemoryIds: string[];
   timestamp: number;
+  [key: string]: unknown;
 };
 
 export function sha256(data: string): string {

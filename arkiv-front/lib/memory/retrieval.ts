@@ -1,4 +1,4 @@
-import { eq } from "@arkiv-network/sdk/query";
+﻿import { eq } from "@arkiv-network/sdk/query";
 import { z } from "zod";
 
 import { queryArkivEntities, readAttr } from "@/lib/arkiv/repo";
@@ -71,7 +71,48 @@ export async function fetchActiveMemories(opts: {
   });
 }
 
-/** Pick the top-N most relevant memories for a prompt (by utilityScore + importanceScore) */
+// ─── cosine similarity ────────────────────────────────────────────────────────
+
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length === 0 || b.length !== a.length) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/**
+ * Semantic reranking using pre-computed embeddings.
+ * Falls back to score-based sort when embeddings are unavailable.
+ */
+export function semanticRerank(
+  memories: MemoryEntry[],
+  queryEmbedding: number[],
+  memoryEmbeddings: Map<string, number[]>,
+  limit = 5,
+): MemoryEntry[] {
+  if (queryEmbedding.length === 0) {
+    return selectRelevantMemories(memories, limit);
+  }
+
+  return [...memories]
+    .map((m) => {
+      const emb = memoryEmbeddings.get(m.memoryId) ?? [];
+      const sim = cosineSimilarity(queryEmbedding, emb);
+      // blend: 60% semantic + 40% utility/importance score
+      const scoreNorm = (m.utilityScore + m.importanceScore) / 200;
+      return { m, combined: 0.6 * sim + 0.4 * scoreNorm };
+    })
+    .sort((a, b) => b.combined - a.combined)
+    .slice(0, limit)
+    .map((x) => x.m);
+}
+
+/** Score-based selection (no embeddings) */
 export function selectRelevantMemories(
   memories: MemoryEntry[],
   limit = 5,

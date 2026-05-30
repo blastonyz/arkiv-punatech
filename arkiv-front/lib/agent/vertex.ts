@@ -1,41 +1,27 @@
-/**
- * Vertex AI Agent Platform (Dialogflow CX) client.
- * Authenticates via API key — set GOOGLE_API_KEY in .env.
- *
- * Agent endpoint:
- *   POST https://{LOCATION}-dialogflow.googleapis.com/v3/projects/{PROJECT}/locations/{LOCATION}/agents/{AGENT_ID}/sessions/{SESSION_ID}:detectIntent
+﻿/**
+ * Gemini API client (Google AI Studio).
+ * - Text generation: gemini-2.0-flash (dual-agent: precise + creative, multi-turn)
+ * - Embeddings: text-embedding-004 for semantic memory retrieval
+ * - Fact extraction: auto-extract memories from conversations
  */
 
-const BASE = "https://dialogflow.googleapis.com/v3";
+const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
-function agentEnv() {
-  const projectId = process.env.GOOGLE_CLOUD_PROJECT_ID;
-  const agentId = process.env.VERTEX_AGENT_ID;
-  const location = process.env.VERTEX_AGENT_LOCATION ?? "southamerica-east1";
-  const apiKey = process.env.GOOGLE_API_KEY;
+const SYSTEM_PROMPT = `Sos un agente de IA llamado MemoryForge, especializado en gestiÃ³n de memoria evolutiva on-chain sobre la red Arkiv.
+RespondÃ©s en espaÃ±ol rioplatense, de forma concisa y Ãºtil.
+Cuando recibÃ­s contexto de memoria previo (marcado con [MEMORIA ACTIVA]), lo tenÃ©s en cuenta para personalizar tu respuesta.
+Cuando el historial de conversaciÃ³n incluye turnos previos, los usÃ¡s como contexto continuo.`;
 
-  if (!projectId || !agentId || !apiKey) {
-    throw new Error(
-      "Missing Vertex AI config. Set GOOGLE_CLOUD_PROJECT_ID, VERTEX_AGENT_ID and GOOGLE_API_KEY in .env.",
-    );
-  }
-
-  return { projectId, agentId, location, apiKey };
-}
-
-function sessionPath(projectId: string, location: string, agentId: string, sessionId: string) {
-  const base =
-    location === "global"
-      ? BASE
-      : `https://${location}-dialogflow.googleapis.com/v3`;
-
-  return `${base}/projects/${projectId}/locations/${location}/agents/${agentId}/sessions/${sessionId}:detectIntent`;
-}
+export type HistoryTurn = {
+  role: "user" | "model";
+  text: string;
+};
 
 export type AgentTurn = {
   text: string;
   sessionId: string;
-  memoryContext?: string; // formatted memories prepended as context
+  memoryContext?: string;
+  history?: HistoryTurn[];
 };
 
 export type AgentResponse = {
@@ -43,47 +29,142 @@ export type AgentResponse = {
   rawResponse: unknown;
 };
 
-export async function callVertexAgent(turn: AgentTurn): Promise<AgentResponse> {
-  const { projectId, agentId, location, apiKey } = agentEnv();
+export type DualAgentResponse = {
+  precise: string;   // temperature 0.2 â€” factual, concise
+  creative: string;  // temperature 0.9 â€” exploratory, generative
+  sessionId: string;
+};
 
-  const queryText = turn.memoryContext
-    ? `${turn.memoryContext}\n\n---\nUser: ${turn.text}`
-    : turn.text;
+export type ExtractedFact = {
+  content: string;
+  memoryType: "fact" | "preference" | "goal" | "context";
+  importanceScore: number; // 0-100
+};
 
-  const url = `${sessionPath(projectId, location, agentId, turn.sessionId)}?key=${encodeURIComponent(apiKey)}`;
+// â”€â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+function apiKey() {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) throw new Error("Missing GEMINI_API_KEY in .env");
+  return key;
+}
+
+function buildContents(
+  prompt: string,
+  history: HistoryTurn[] = [],
+): Array<{ role: string; parts: Array<{ text: string }> }> {
+  const historyContents = history.map((h) => ({
+    role: h.role,
+    parts: [{ text: h.text }],
+  }));
+  return [...historyContents, { role: "user", parts: [{ text: prompt }] }];
+}
+
+async function generateContent(
+  prompt: string,
+  temperature: number,
+  history: HistoryTurn[] = [],
+): Promise<string> {
   const body = {
-    queryInput: {
-      text: { text: queryText },
-      languageCode: "es",
-    },
-    queryParams: {
-      timeZone: "America/Argentina/Buenos_Aires",
-    },
+    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+    contents: buildContents(prompt, history),
+    generationConfig: { temperature, maxOutputTokens: 1024 },
   };
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const res = await fetch(
+    `${GEMINI_BASE}/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey())}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
 
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Vertex AI Agent error ${res.status}: ${err}`);
-  }
+  if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`);
 
   const data = (await res.json()) as {
-    queryResult?: {
-      responseMessages?: Array<{ text?: { text?: string[] } }>;
-    };
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
 
-  const reply =
-    data.queryResult?.responseMessages
-      ?.flatMap((m) => m.text?.text ?? [])
-      .join("\n")
-      .trim() ?? "(sin respuesta)";
+  return (
+    data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("").trim() ??
+    "(sin respuesta)"
+  );
+}
 
-  return { reply, rawResponse: data };
+// â”€â”€â”€ public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/** Single-agent call (backwards compat) */
+export async function callVertexAgent(turn: AgentTurn): Promise<AgentResponse> {
+  const prompt = turn.memoryContext
+    ? `[MEMORIA ACTIVA]\n${turn.memoryContext}\n\n---\n${turn.text}`
+    : turn.text;
+
+  const reply = await generateContent(prompt, 0.7, turn.history);
+  return { reply, rawResponse: null };
+}
+
+/** Dual-agent call: precise (0.2) + creative (0.9) in parallel, with history */
+export async function callDualAgents(turn: AgentTurn): Promise<DualAgentResponse> {
+  const prompt = turn.memoryContext
+    ? `[MEMORIA ACTIVA]\n${turn.memoryContext}\n\n---\n${turn.text}`
+    : turn.text;
+
+  const [precise, creative] = await Promise.all([
+    generateContent(prompt, 0.2, turn.history),
+    generateContent(prompt, 0.9, turn.history),
+  ]);
+
+  return { precise, creative, sessionId: turn.sessionId };
+}
+
+/** Get embedding vector for semantic memory retrieval */
+export async function getEmbedding(text: string): Promise<number[]> {
+  const body = {
+    model: "models/text-embedding-004",
+    content: { parts: [{ text }] },
+    taskType: "RETRIEVAL_QUERY",
+  };
+
+  const res = await fetch(
+    `${GEMINI_BASE}/models/text-embedding-004:embedContent?key=${encodeURIComponent(apiKey())}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+
+  if (!res.ok) throw new Error(`Embedding error ${res.status}: ${await res.text()}`);
+
+  const data = (await res.json()) as { embedding?: { values?: number[] } };
+  return data.embedding?.values ?? [];
+}
+
+/**
+ * Extract memorable facts from a conversation turn.
+ * Returns an array of facts to persist as memoryEntry in Arkiv.
+ * Fire-and-forget safe â€” returns [] on error.
+ */
+export async function extractFacts(
+  userMessage: string,
+  agentReply: string,
+): Promise<ExtractedFact[]> {
+  const extractPrompt = `AnalizÃ¡ este intercambio entre un usuario y un agente de IA.
+ExtraÃ© entre 0 y 3 hechos importantes que valga la pena recordar a largo plazo.
+Solo extraÃ© hechos concretos â€” preferencias, objetivos, contexto personal, datos tÃ©cnicos relevantes.
+No extraigas cosas genÃ©ricas o triviales.
+
+Intercambio:
+Usuario: ${userMessage}
+Agente: ${agentReply}
+
+RespondÃ© ÃšNICAMENTE con un JSON array (sin markdown, sin texto extra):
+[
+  { "content": "...", "memoryType": "fact|preference|goal|context", "importanceScore": 0-100 },
+  ...
+]
+Si no hay nada relevante, respondÃ©: []`;
+
+  try {
+    const raw = await generateContent(extractPrompt, 0.1);
+    // strip possible markdown fences
+    const json = raw.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const parsed = JSON.parse(json) as ExtractedFact[];
+    return Array.isArray(parsed) ? parsed.slice(0, 3) : [];
+  } catch {
+    return [];
+  }
 }
